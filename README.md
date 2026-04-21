@@ -31,7 +31,7 @@ It allows users to create posts, comment, like, follow other users, and view a p
 
 ```bash
 git clone https://github.com/ashraf171/django-social-api
-cd your-repo
+cd django-social-api
 python -m venv venv
 source venv/bin/activate   # Linux/macOS
 venv\Scripts\activate      # Windows

@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from .models import Post,Comment,Like,User,Follow
-
-
+from rest_framework.exceptions import ValidationError
 
 class CommentSerializer(serializers.ModelSerializer):
     author_username = serializers.CharField(source='author.username', read_only=True)
@@ -23,6 +22,11 @@ class CommentSerializer(serializers.ModelSerializer):
     def validate_content(self, value):
         if not value.strip():
             raise serializers.ValidationError("Content cannot be empty.")
+        return value
+    
+    def validate_parent(self, value):
+        if value and value.parent is not None:
+            raise ValidationError("Only one level of replies is allowed.")
         return value
        
 
@@ -74,56 +78,52 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class PostSerializer(serializers.ModelSerializer):
-    author_username=serializers.CharField(source='author.username',read_only=True)
-    comments_count=serializers.SerializerMethodField()
-    comments=CommentSerializer(read_only=True,many=True)
-    is_liked=serializers.SerializerMethodField()
-    
-    
+    author_username = serializers.CharField(source='author.username', read_only=True)
+    comments_count = serializers.IntegerField(read_only=True)
+    is_liked = serializers.SerializerMethodField()
 
     class Meta:
-        model=Post
-        fields=['id',
-                'author',
-                'author_username',
-                'title','content',
-                'likes_count',
-                'comments_count',
-                'comments',
-                'is_liked',
-                'image',
-                'created_at',
-                'updated_at']
-        
+        model = Post
+        fields = [
+            'id',
+            'author',
+            'author_username',
+            'title',
+            'content',
+            'likes_count',
+            'comments_count',
+            'is_liked',
+            'image',
+            'created_at',
+            'updated_at',
+        ]
         read_only_fields = [
             'id',
             'author',
             'author_username',
             'likes_count',
             'comments_count',
-            'comments',
             'is_liked',
             'created_at',
             'updated_at',
         ]
 
-    def get_comments_count(self, obj):
-        return obj.comments.count()
 
-   
-    
-    def get_is_liked(self,obj):
-        request=self.context.get('request')
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
         if not request or request.user.is_anonymous:
             return False
-        return Like.objects.filter(author=request.user,post=obj).exists()
-    
 
-    def validate_title(self,value):
+        liked_post_ids = self.context.get('liked_post_ids')
+        if liked_post_ids is not None:
+            return obj.id in liked_post_ids
+
+        return Like.objects.filter(author=request.user, post=obj).exists()
+
+    def validate_title(self, value):
         if not value.strip():
-             raise serializers.ValidationError("Title cannot be empty.")
+            raise serializers.ValidationError("Title cannot be empty.")
         return value
-    
 
     def validate_content(self, value):
         if not value.strip():
@@ -138,3 +138,9 @@ class LikeSerializer(serializers.ModelSerializer):
         model = Like
         fields = ['id', 'author', 'post']
         read_only_fields = ['id', 'author']
+
+    
+    def validate(self, attrs):
+        if Like.objects.filter(author=attrs['author'], post=attrs['post']).exists():
+            raise ValidationError("You already liked this post.")
+        return attrs

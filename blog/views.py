@@ -16,6 +16,9 @@ from rest_framework.generics import ListAPIView
 from rest_framework.generics import RetrieveAPIView
 from rest_framework import generics
 from drf_spectacular.utils import extend_schema
+from django.db.models import Prefetch
+from django.db.models import Count
+
 
 @extend_schema(description="Register a new user account")
 class RegisterView(generics.CreateAPIView):
@@ -102,7 +105,9 @@ class Pagination(PageNumberPagination):
 
 @extend_schema(description="List all posts or create a new post")
 class PostViewSet(viewsets.ModelViewSet):
-    queryset = Post.objects.select_related('author').prefetch_related('comments')
+    queryset = Post.objects.select_related('author').annotate(
+    comments_count=Count('comments')
+)
     permission_classes=[IsAuthenticatedOrReadOnly,IsPostOwner]
     serializer_class=PostSerializer
     pagination_class=Pagination
@@ -141,14 +146,25 @@ class PostViewSet(viewsets.ModelViewSet):
             )
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
-        
+    
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        request = self.request
+
+        if request.user.is_authenticated:
+            liked_post_ids = set(
+            Like.objects.filter(author=request.user).values_list('post_id', flat=True)
+            )
+        context['liked_post_ids'] = liked_post_ids
+
+        return context
 
 
 
 
 class CommentViewSet(viewsets.ModelViewSet):
     pagination_class=Pagination
-    queryset=Comment.objects.all().order_by('created_at')
+    queryset = Comment.objects.select_related('author', 'post', 'parent').order_by('-created_at')
     serializer_class=CommentSerializer
 
 
