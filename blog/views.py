@@ -15,7 +15,9 @@ from django.db import transaction
 from rest_framework.generics import ListAPIView
 from rest_framework.generics import RetrieveAPIView
 from rest_framework import generics
+from drf_spectacular.utils import extend_schema
 
+@extend_schema(description="Register a new user account")
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
@@ -39,7 +41,7 @@ class MeView(APIView):
         )
         return Response(serializer.data)
 
-
+@extend_schema(description="Follow user")
 class FollowUserView(APIView):
     def post(self, request, user_id):
         request_user = request.user
@@ -69,7 +71,7 @@ class FollowUserView(APIView):
         return Response({"message": "Already following"}, status=200)
 
 
-
+@extend_schema(description="unfollow user")
 class UnfollowUserView(APIView):
     def delete(self, request, user_id):
         request_user = request.user
@@ -98,6 +100,7 @@ class UnfollowUserView(APIView):
 class Pagination(PageNumberPagination):
     page_size=10
 
+@extend_schema(description="List all posts or create a new post")
 class PostViewSet(viewsets.ModelViewSet):
     queryset = Post.objects.select_related('author').prefetch_related('comments')
     permission_classes=[IsAuthenticatedOrReadOnly,IsPostOwner]
@@ -110,8 +113,13 @@ class PostViewSet(viewsets.ModelViewSet):
     search_fields=['title','content']
    
    
+
     
     
+    @extend_schema(
+    description="Like or unlike a post. If already liked, it will remove the like.",
+    responses={200: {"type": "object", "example": {"status": "unlike"}},
+               201: {"type": "object", "example": {"status": "liked"}}})
     
     @action(detail=True,methods=['post'],permission_classes=[IsAuthenticated])
     def like(self,request,pk=None):
