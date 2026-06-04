@@ -41,6 +41,63 @@ python manage.py runserver
 ```
 
 ---
+## 🐳 Docker Setup
+
+This project is fully containerized using Docker and Docker Compose.
+
+It includes:
+- Django web service
+- PostgreSQL database service
+
+---
+
+## 🚀 Run the project with Docker Compose
+
+### Build and start containers
+```bash
+docker compose up -d --build
+```
+### Apply database migrations
+```bash
+docker exec -it django-api python manage.py migrate
+```
+### Create superuser
+```bash
+docker exec -it django-api python manage.py createsuperuser
+```
+### Check running containers
+```bash
+docker ps
+```
+### Stop containers
+```bash
+docker compose down
+```
+### Stop and remove volumes (reset database)
+```bash
+docker compose down -v
+```
+### Rebuild project from scratch
+```bash
+docker compose up -d --build
+```
+---
+
+## 🌐 Services
+
+| Service | Description |
+|--------|-------------|
+| web | Django API |
+| db | PostgreSQL database |
+
+---
+
+## ⚠️ Notes
+
+- `depends_on` ensures service startup order, not readiness
+- Database host should be `db` (Docker internal DNS)
+- Environment variables are used for configuration
+---
 
 ## Authentication
 
