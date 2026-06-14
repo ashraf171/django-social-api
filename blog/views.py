@@ -17,7 +17,7 @@ from rest_framework.generics import RetrieveAPIView
 from rest_framework import generics
 from drf_spectacular.utils import extend_schema
 from django.db.models import Prefetch
-from django.db.models import Count
+from django.db.models import Count, F
 
 
 @extend_schema(description="Register a new user account")
@@ -43,61 +43,74 @@ class MeView(APIView):
             context={'request': request}
         )
         return Response(serializer.data)
+    
+
 
 @extend_schema(description="Follow user")
 class FollowUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request, user_id):
         request_user = request.user
         target_user = get_object_or_404(User, id=user_id)
 
         if request_user == target_user:
             return Response(
-                {'error': "you can't follow yourself"},
+                {"error": "You can't follow yourself"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         with transaction.atomic():
-            obj, created = Follow.objects.get_or_create(
+            follow, created = Follow.objects.get_or_create(
                 follower=request_user,
                 following=target_user
             )
 
-            if created:
-                target_user.followers_count += 1
-                request_user.following_count += 1
+            if not created:
+                return Response(
+                    {"message": "Already following"},
+                    status=status.HTTP_200_OK
+                )
 
-                target_user.save()
-                request_user.save()
+            User.objects.filter(id=target_user.id).update(
+                followers_count=F("followers_count") + 1
+            )
+            User.objects.filter(id=request_user.id).update(
+                following_count=F("following_count") + 1
+            )
 
-                return Response({'message': "Followed"}, status=201)
-
-        return Response({"message": "Already following"}, status=200)
+        return Response({"message": "Followed"}, status=status.HTTP_201_CREATED)
 
 
-@extend_schema(description="unfollow user")
+
+@extend_schema(description="Unfollow user")
 class UnfollowUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def delete(self, request, user_id):
         request_user = request.user
         target_user = get_object_or_404(User, id=user_id)
 
-        follow = Follow.objects.filter(
-            follower=request_user,
-            following=target_user
-        ).first()
+        with transaction.atomic():
+            deleted_count, _ = Follow.objects.filter(
+                follower=request_user,
+                following=target_user
+            ).delete()
 
-        if not follow:
-            return Response({"error": "Not following"}, status=400)
+            if deleted_count == 0:
+                return Response(
+                    {"error": "Not following"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        follow.delete()
+            User.objects.filter(id=target_user.id).update(
+                followers_count=F("followers_count") - 1
+            )
+            User.objects.filter(id=request_user.id).update(
+                following_count=F("following_count") - 1
+            )
 
-        
-        target_user.followers_count -= 1
-        request_user.following_count -= 1
-
-        target_user.save()
-        request_user.save()
-
-        return Response({"message": "Unfollowed"}, status=200)
+        return Response({"message": "Unfollowed"}, status=status.HTTP_200_OK)
 
 
 class Pagination(PageNumberPagination):
@@ -105,8 +118,11 @@ class Pagination(PageNumberPagination):
 
 @extend_schema(description="List all posts or create a new post")
 class PostViewSet(viewsets.ModelViewSet):
-    queryset = Post.objects.select_related('author').annotate(
-    comments_count=Count('comments')
+    queryset = (
+    Post.objects
+    .select_related("author")
+    .annotate(comments_count=Count("comments"))
+    .order_by("-created_at")
 )
     permission_classes=[IsAuthenticatedOrReadOnly,IsPostOwner]
     serializer_class=PostSerializer
@@ -151,12 +167,15 @@ class PostViewSet(viewsets.ModelViewSet):
         context = super().get_serializer_context()
         request = self.request
 
+        liked_post_ids = set()
+
         if request.user.is_authenticated:
             liked_post_ids = set(
-            Like.objects.filter(author=request.user).values_list('post_id', flat=True)
+                Like.objects.filter(author=request.user)
+                .values_list("post_id", flat=True)
             )
-        context['liked_post_ids'] = liked_post_ids
 
+        context["liked_post_ids"] = liked_post_ids
         return context
 
 
