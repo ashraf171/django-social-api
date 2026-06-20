@@ -22,6 +22,12 @@ class ApiTest(APITestCase):
             password="1234",
         )
 
+        self.third_user =User.objects.create_user(
+            username="lolo",
+            email="lolo@lolo.com",
+            password="1234"
+        )
+
     def test_non_owner_cannot_update_post(self):
         self.client.force_authenticate(user=self.other_user)
 
@@ -472,3 +478,63 @@ class ApiTest(APITestCase):
 
         self.assertEqual(self.user.following_count, 1)
         self.assertEqual(self.other_user.followers_count, 1)
+    
+
+    def test_authenticated_user_can_see_posts_from_followed_users_only(self):
+        self.client.force_authenticate(user=self.user)
+        follow=Follow.objects.create(
+            follower=self.user,
+            following=self.other_user
+        )
+
+        
+        followed_post = Post.objects.create(
+        author=self.other_user,
+        title="hello from django",
+        content="lll",
+                )
+
+        unrelated_post = Post.objects.create(
+        author=self.third_user,
+        title="Hello!",
+        content="lll",
+            )
+
+        response=self.client.get(f"/api/feed/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get("results", response.data)
+        post_ids = [post["id"] for post in results]
+        self.assertIn(followed_post.id, post_ids)
+        self.assertNotIn(unrelated_post.id, post_ids)
+
+
+
+    def test_unauthenticated_user_cannot_access_feed(self):
+        response = self.client.get("/api/feed/")
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    
+    def test_authenticated_user_with_no_following_gets_empty_feed(self):
+        self.client.force_authenticate(user=self.user)
+
+        Post.objects.create(
+        author=self.other_user,
+        title="Post from other user",
+        content="This post should not appear in feed",
+        )
+
+        response = self.client.get("/api/feed/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        results = response.data.get("results", response.data)
+
+        self.assertEqual(len(results), 0)
+
+    
+
+
+
+
